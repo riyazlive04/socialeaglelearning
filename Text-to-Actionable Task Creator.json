@@ -1,0 +1,426 @@
+{
+  "name": "Text-to-Actionable Task Creator",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "sender": "support@sirahdigital.in"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "65e6ecc3-b432-4815-b4bd-856290a94e4f",
+      "name": "Client Email Trigger",
+      "notesInFlow": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "MD7ASiBSm3SCExqU",
+          "name": "riyaz.livechat Gmail"
+        }
+      },
+      "notes": "Checks Client Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "connectwithriyaz@outlook.com",
+        "subject": "={{ $json.Task }}",
+        "message": "=Task  {{ $json.Task }} is {{ $json.Status }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        912,
+        240
+      ],
+      "id": "52c3b1e5-e880-41ee-9846-f017cc369ac2",
+      "name": "Task Status Update",
+      "webhookId": "a19c96ac-4150-49f2-913c-9e852641cf98",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "MD7ASiBSm3SCExqU",
+          "name": "riyaz.livechat Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Extract all actionable tasks from the email text below.\n\nEmail Text:\n{{ $json.text }}\n\nRules:\n1. Each task should be actionable and clear.\n2. Set owner as \"Web Analyst\" or \"Tester\".\n3. Extract due dates if mentioned, otherwise set it based on the complexity of the task.\n4. Assign a priority as High/Medium/Low based on urgency in the email.\n5. Include dependencies if the email indicates tasks rely on other tasks.\n6. Return **JSON only**, following this exact structure:\n\n[\n  {\n    \"task\": \"Short task title\",\n    \"owner\": \"Task owner name or 'Unassigned'\",\n    \"due_date\": \"YYYY-MM-DD or null\",\n    \"priority\": \"High/Medium/Low\",\n    \"dependencies\": \"If any, else null\"\n  }\n]"
+            },
+            {
+              "content": "=Extract all actionable tasks from the email text below.\n\nEmail Text:\n{{ $json.text }}\n\nRules:\n1. Each task should be actionable and clear.\n2. Set owner as \"Web Analyst\" or \"Tester\".\n3. Extract due dates if mentioned, otherwise set it based on the complexity of the task.\n4. Assign a priority as High/Medium/Low based on urgency in the email.\n5. Include dependencies if the email indicates tasks rely on other tasks.\n6. Return **JSON only**, following this exact structure:\n\n[\n  {\n    \"task\": \"Short task title\",\n    \"owner\": \"Task owner name or 'Unassigned'\",\n    \"due_date\": \"YYYY-MM-DD or null\",\n    \"priority\": \"High/Medium/Low\",\n    \"dependencies\": \"If any, else null\"\n  }\n]",
+              "role": "system"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        224,
+        0
+      ],
+      "id": "b794e3c4-84cd-4157-b4f6-39e57006c377",
+      "name": "Task Generation",
+      "credentials": {
+        "openAiApi": {
+          "id": "yJZ58e2CUvBZHlG9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI JSON output\nconst tasks = JSON.parse($json[\"message\"][\"content\"]);\n\nlet rows = '';\nfor (const task of tasks) {\n  rows += `\n    <tr>\n      <td>${task.task}</td>\n      <td>${task.owner}</td>\n      <td>${task.due_date}</td>\n      <td>${task.priority}</td>\n    </tr>\n  `;\n}\n\nconst htmlTable = `\n<table border=\"1\" cellpadding=\"5\" cellspacing=\"0\">\n  <tr>\n    <th>Task</th>\n    <th>Owner</th>\n    <th>Due Date</th>\n    <th>Priority</th>\n  </tr>\n  ${rows}\n</table>\n`;\n\nreturn [\n  {\n    json: {\n      emailBody: `\n        Hi PM,<br><br>\n        Here are the extracted tasks from client email:<br><br>\n        ${htmlTable}\n        <br><br>\n        Please click below to approve or reject:<br>\n        - Approve: <a href=\"https://your-n8n-domain/webhook/approve\">Approve</a><br>\n        - Reject: <a href=\"https://your-n8n-domain/webhook/reject\">Reject</a>\n      `\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        0
+      ],
+      "id": "8aa5d073-cb34-44b0-8373-e58621144ec2",
+      "name": "Email Generation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $json.emailBody || $json.body || '';\nconst tasks = [];\n\n// Extract <tr> rows (skip the first header row)\nconst rowRegex = /<tr>(.*?)<\\/tr>/gms;\nlet rows = [...html.matchAll(rowRegex)].map(m => m[1]).slice(1); \n\nfor (const row of rows) {\n  const cols = [...row.matchAll(/<td>(.*?)<\\/td>/gms)].map(m => m[1].trim());\n  if (cols.length >= 4) {\n    tasks.push({\n      \"Task Name\": cols[0],\n      \"Owner\": cols[1],\n      \"Owner Email\": cols[1].toLowerCase().includes(\"analyst\") ? \"analyst@sirahdigital.in\" : \"tester@sirahdigital.in\",\n      \"Due Date\": cols[2],\n      \"Priority\": cols[3],\n      \"Status\": \"Pending\",\n      \"Notes / Challenges\": \"\",\n      \"Dependencies\": \"\"  // If needed, you can parse it from your AI JSON\n    });\n  }\n}\n\nreturn tasks.map(t => ({ json: t }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        -128
+      ],
+      "id": "8ff27545-62dc-41cd-82b2-84e6cd24f939",
+      "name": "Task Separation"
+    },
+    {
+      "parameters": {
+        "sendTo": "connectwithriyaz@outlook.com",
+        "subject": "={{ $('Client Email Trigger').item.json.headers.subject }}",
+        "message": "=Hi PM,<br><br>\n\nHere are the extracted tasks from client email:<br><br>\n\n{{ $json.emailBody }}\n\n<br><br>\nPlease click below to approve or reject:<br>\n- Approve: <a href=\"https://your-n8n-domain/webhook/approve\">Approve</a><br>\n- Reject: <a href=\"https://your-n8n-domain/webhook/reject\">Reject</a>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        784,
+        0
+      ],
+      "id": "80e208b5-574b-46c3-8b7a-5ff9b423b8ab",
+      "name": "Task Creation Email - PM",
+      "webhookId": "1f8224bf-f984-4c16-9af0-b6a6862e2b18",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "MD7ASiBSm3SCExqU",
+          "name": "riyaz.livechat Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1U5S2GFGDzV-2YCo5xAwX-Cst32fJmCbiLNmHq_z9xII",
+          "mode": "list",
+          "cachedResultName": "Tasks Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1U5S2GFGDzV-2YCo5xAwX-Cst32fJmCbiLNmHq_z9xII/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Tasks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1U5S2GFGDzV-2YCo5xAwX-Cst32fJmCbiLNmHq_z9xII/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Task": "={{$json[\"Task Name\"]}}",
+            "Owner": "={{$json.Owner}}",
+            "Priority": "={{$json.Priority}}",
+            "Due_Date": "={{$json[\"Due Date\"]}}",
+            "Status": "={{$json.Status}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Task",
+              "displayName": "Task",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Owner",
+              "displayName": "Owner",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Priority",
+              "displayName": "Priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Due_Date",
+              "displayName": "Due_Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Created",
+              "displayName": "Created",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1024,
+        -128
+      ],
+      "id": "13bb2b73-93b2-462f-b530-c19f82e5b67f",
+      "name": "Status Update",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "j7LQHzChRtE52CkK",
+          "name": "riyaz.livechat - Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyHour"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1U5S2GFGDzV-2YCo5xAwX-Cst32fJmCbiLNmHq_z9xII",
+          "mode": "list",
+          "cachedResultName": "Tasks Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1U5S2GFGDzV-2YCo5xAwX-Cst32fJmCbiLNmHq_z9xII/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Tasks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1U5S2GFGDzV-2YCo5xAwX-Cst32fJmCbiLNmHq_z9xII/edit#gid=0"
+        },
+        "event": "rowUpdate",
+        "options": {
+          "columnsToWatch": [
+            "Status"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        480,
+        256
+      ],
+      "id": "9ffa49cf-7497-40a2-aee2-1f9e3f8cb4a3",
+      "name": "Task Status Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "NodetWV6XxuQ9hVI",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7e7f76a8-937b-4cfb-b2e1-46931b8b74b9",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        688,
+        256
+      ],
+      "id": "df2a73c8-1a88-4ad7-bacb-f7b5b05fbcfb",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Client Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Task Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Generation": {
+      "main": [
+        [
+          {
+            "node": "Email Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Generation": {
+      "main": [
+        [
+          {
+            "node": "Task Separation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Task Creation Email - PM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Separation": {
+      "main": [
+        [
+          {
+            "node": "Status Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Creation Email - PM": {
+      "main": [
+        []
+      ]
+    },
+    "Status Update": {
+      "main": [
+        []
+      ]
+    },
+    "Task Status Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Task Status Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "257a05f6-41ea-4288-973e-60d491974bcf",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "321cedf60d4c598b428d3e59326887b97112a12c3b89933ba6d55156c284c6c9"
+  },
+  "id": "j6sFFC9WSxhVIksy",
+  "tags": []
+}
